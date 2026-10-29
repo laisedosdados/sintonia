@@ -34,6 +34,13 @@ Foi meu primeiro projeto de dados com áudio, e usar uma IA como parceira me per
    O app sugere o gênero da música e os gêneros que mais soam parecidos com ela.
 5. **Resultados.** A música analisada aparece no topo e, embaixo, as mais parecidas, cada uma com a **% de compatibilidade** e uma explicação em português simples, como *"As duas têm melodia com saltos grandes entre as notas; voz com bastante vibrato"*. Dá para **filtrar por idioma**, ouvir a prévia, abrir a música no YouTube, YouTube Music, Spotify, Deezer ou Jamendo, e marcar **Gostei** ou **Não gostei**.
 
+### Telas do app
+
+| Hung Up (Madonna) → Disco Tropical (Lucas Pretti) | Applause (Lady Gaga) → Unloveu (KATSEYE) |
+|---|---|
+| <img src="docs/tela_hungup.png" alt="Tela do Sintonia: Hung Up, da Madonna, analisada, e a recomendação Disco Tropical, de Lucas Pretti, com 52% de compatibilidade"> | <img src="docs/tela_applause.png" alt="Tela do Sintonia: Applause, da Lady Gaga, analisada, e a recomendação Unloveu, do KATSEYE, com 42% de compatibilidade"> |
+| 52% de compatibilidade: melodia rápida, bateria em destaque e batida firme. | 42% de compatibilidade: melodia com saltos grandes e voz numa região aguda. |
+
 ```mermaid
 flowchart LR
     A[Música escolhida] --> B[Separação com IA<br/>Demucs]
@@ -177,6 +184,7 @@ notebooks/
 sql/                           estrutura do banco e consultas de exemplo
 powerbi/                       guia do painel e CSVs exportados
 tests/                         testes com músicas sintéticas
+docs/                          imagens das telas do app
 .github/workflows/generos.yml  preenche o gênero do catálogo automaticamente (GitHub Actions)
 dados/catalogo.db              o catálogo (só números, sem áudio)
 ```
