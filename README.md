@@ -70,6 +70,34 @@ O app recomenda a partir de um catálogo que eu montei: **650 músicas**, 600 do
 | Idiomas | 434 em português, 130 em inglês e algumas em espanhol, japonês e outros |
 | Gêneros mais comuns | Música brasileira, Pop, Alternativo, Rock, Soul & Funk, Música latina, Gospel |
 
+## Pipeline de dados
+
+Por trás do app, montei uma pipeline de ponta a ponta, da coleta ao deploy:
+
+```mermaid
+flowchart LR
+    A[Ingestão<br/>APIs Deezer e Jamendo] --> B[Pré-processamento<br/>mono, 22,05 kHz]
+    B --> C[Separação de fontes<br/>Demucs]
+    C --> D[Feature engineering<br/>librosa]
+    D --> E[Enriquecimento<br/>Whisper e gêneros]
+    E --> F[(SQLite)]
+    F --> G[Recomendação<br/>cosseno ponderado]
+    G --> H[App Streamlit]
+    F --> I[CSVs para Power BI]
+```
+
+| Etapa | O que acontece | Ferramentas |
+|---|---|---|
+| **1. Ingestão** | Coleta de músicas pelas APIs REST, a partir de playlists de dezenas de estilos. Prévias de 30 s do Deezer e músicas completas do Jamendo. Requisições com nova tentativa automática quando a API limita o acesso. | Python, `requests`, APIs do Deezer e do Jamendo |
+| **2. Pré-processamento** | O áudio é convertido para mono e reamostrado para 22,05 kHz, para todas as músicas ficarem no mesmo padrão. | librosa |
+| **3. Separação de fontes** | Um modelo de deep learning divide cada música em voz, bateria, baixo e outros instrumentos. Roda com GPU no Google Colab, umas 20 vezes mais rápido que sem GPU. | Demucs (`htdemucs`), PyTorch, Google Colab |
+| **4. Feature engineering** | Cada parte vira números, organizados nos 5 aspectos. Na melodia, o pitch da voz é extraído com pYIN e segmentado em notas, e o que entra na conta são os intervalos entre elas, então a medida não depende do tom. Também uso MFCCs, chroma, tonnetz, tempograma, detecção de ataques e perfis de tonalidade de Krumhansl. | librosa, NumPy |
+| **5. Enriquecimento** | O idioma é detectado pelo Whisper ouvindo só a voz separada, e só é aceito com confiança acima de 50%. O gênero e as informações do álbum vêm das APIs, buscados por um job automatizado. | Whisper, GitHub Actions |
+| **6. Armazenamento** | Tudo vai para um banco SQLite em formato longo (uma linha por música e característica), com migração automática quando entram colunas novas. Nenhum áudio é guardado. | SQLite, SQL, pandas |
+| **7. Modelagem** | As características são padronizadas com z-score. Para cada aspecto, calculo a similaridade de cosseno entre a música escolhida e o catálogo, e a nota final é a média ponderada pelos pesos que a pessoa escolhe. Depois vem um re-ranking opcional por gênero e um limite de 2 músicas por artista, para variar. | NumPy, pandas |
+| **8. Explicabilidade** | A explicação de cada recomendação lista as características interpretáveis em que as duas músicas fogem da média na mesma direção. | Python |
+| **9. Deploy e testes** | O app roda no Streamlit Community Cloud, com cache que se renova quando o catálogo muda. A lógica é coberta por testes automatizados com músicas sintéticas, e os dados são exportados em CSV para um painel no Power BI. | Streamlit, pytest, Power BI |
+
 ## Decisões que tomei
 
 **Comparar pelo som, não pelo gênero.** Duas músicas de gêneros diferentes podem ter a mesma coisa que me atrai. Por isso o app analisa o áudio de cada música, e não etiquetas como "pop" ou "MPB".
@@ -88,15 +116,17 @@ O app recomenda a partir de um catálogo que eu montei: **650 músicas**, 600 do
 
 **Idioma detectado pela voz.** Para o filtro de idioma, uso o Whisper ouvindo só a voz separada, sem os instrumentos, o que deixa a detecção mais confiável. Quando ele não tem certeza, a música fica como "não identificado", em vez de ir para o idioma errado.
 
-## Ferramentas
+## Stack
 
-- **Python**: librosa (análise de áudio), Demucs (separação da voz), Whisper (idioma), pandas, scikit-learn
-- **APIs**: Deezer e Jamendo (músicas, prévias, gêneros e informações dos álbuns)
-- **SQL**: SQLite para o catálogo e para registrar o uso do app (`sql/schema.sql`, `sql/consultas.sql`)
-- **Streamlit**: o app
-- **Google Colab**: para montar o catálogo com GPU gratuita
-- **GitHub Actions**: preenche o gênero das músicas do catálogo automaticamente
-- **Power BI**: painel de análise (`powerbi/README.md`)
+- **Linguagens**: Python e SQL
+- **Processamento de áudio**: librosa (pitch, MFCC, chroma, ritmo), Demucs com PyTorch (separação de fontes), Whisper (identificação de idioma)
+- **Dados e modelagem**: pandas, NumPy, scikit-learn (redução de dimensionalidade para o mapa musical)
+- **Fontes de dados**: APIs REST do Deezer e do Jamendo
+- **Banco de dados**: SQLite (`sql/schema.sql`, `sql/consultas.sql`)
+- **Orquestração e automação**: Google Colab com GPU para o processamento pesado e GitHub Actions para o enriquecimento do catálogo
+- **App e deploy**: Streamlit Community Cloud
+- **Qualidade**: pytest, com músicas sintéticas geradas no próprio código
+- **Visualização**: Power BI (`powerbi/README.md`)
 
 ## O que aprendi
 
