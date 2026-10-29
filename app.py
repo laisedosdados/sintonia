@@ -361,9 +361,13 @@ with st.container(border=True):
             top = [g for g in ordem if g != genero_musica and g in parecido][:3]
             st.caption("Os gêneros que mais soam parecidos com essa música, pelo que você ajustou acima: "
                        + ", ".join(f"**{g}** ({parecido[g] * 100:.0f}%)" for g in top) + ".")
-        modo = st.radio("Quais gêneros entram nas recomendações?",
-                        ["Todos os gêneros", "Só os que eu escolher"], horizontal=True, key="modo_genero")
-        if modo == "Só os que eu escolher":
+        MODOS = {
+            "todos": "Não usar gênero: recomendar só pelo som",
+            "preferir": "Dar preferência a alguns gêneros, sem excluir os outros",
+            "so": "Só músicas dos gêneros que eu escolher",
+        }
+        modo = st.radio("Como o gênero entra na busca?", list(MODOS), format_func=MODOS.get, key="modo_genero")
+        if modo != "todos":
             if "filtro_genero" not in ss:
                 inicio = [g for g in ordem if g == genero_musica]
                 inicio += [g for g in ordem if g != genero_musica and g in parecido][:2]
@@ -381,6 +385,8 @@ with st.container(border=True):
                 "Gêneros", ordem, key="filtro_genero", format_func=rotulo_genero,
                 help="Já marquei o gênero da música e os dois mais parecidos. O número entre parênteses "
                      "é quantas músicas desse gênero tem no catálogo.")
+            st.caption("As músicas desses gêneros sobem na lista, mas as de outros gêneros continuam aparecendo."
+                       if modo == "preferir" else "Só vão aparecer músicas desses gêneros.")
             if genero_musica not in contagem_g.index and genero_musica != "Não identificado":
                 st.caption(f"Não há músicas de {genero_musica} no catálogo, então sugeri os gêneros mais parecidos.")
 
@@ -395,12 +401,14 @@ if st.button("🎧 Encontrar músicas parecidas", type="primary", width="stretch
     elif not fontes_rec:
         st.error("Escolha pelo menos uma fonte.")
     elif generos_escolhidos is not None and not generos_escolhidos:
-        st.error("Escolha pelo menos um gênero, ou marque “Todos os gêneros”.")
+        st.error("Escolha pelo menos um gênero, ou marque “Não usar gênero”.")
     else:
         busca_id = None
         try:
+            filtro_g, pref_g = ((generos_escolhidos, None) if ss.get("modo_genero") == "so"
+                                else (None, generos_escolhidos))
             recs, _ = rec.recomendar(an["feats"], pesos, n=10, fontes=fontes_rec, excluir=m,
-                                     generos=generos_escolhidos)
+                                     generos=filtro_g, preferir_generos=pref_g)
             con = conexao_uso()
             partes = [p for p, _ in PARTES_TESTE if ss.get(f"parte_{p}")]
             busca_id = banco.registrar_busca(con, m, partes, pesos, fontes_rec)
@@ -408,7 +416,7 @@ if st.button("🎧 Encontrar músicas parecidas", type="primary", width="stretch
         except Exception:
             pass  # registrar o uso é opcional
         ss.pesquisa = {"pesos": pesos, "fontes": fontes_rec, "busca_id": busca_id,
-                       "generos": generos_escolhidos}
+                       "generos": generos_escolhidos, "modo_genero": ss.get("modo_genero", "todos")}
         ss.pop("filtro_idioma", None)
 
 
@@ -447,13 +455,19 @@ if b:
     capa = (f'<img class="sint-capa" src="{e(capa_url)}" alt="">' if capa_url
             else '<div class="sint-capa sint-capa-vazia"></div>')
     busca_txt = ", ".join(f'{ASPECTO_INFO[a]["nome"]} {b["pesos"][a] * 100:.0f}' for a in usados)
-    gen_txt = "todos os gêneros" if b.get("generos") is None else ", ".join(b["generos"])
+    modo_b = b.get("modo_genero", "todos")
+    if modo_b == "todos" or not b.get("generos"):
+        gen_txt = "Gêneros: todos (só pelo som)"
+    elif modo_b == "preferir":
+        gen_txt = "Preferência para: " + ", ".join(b["generos"])
+    else:
+        gen_txt = "Só: " + ", ".join(b["generos"])
     st.markdown(
         f'<div class="sint-semente">{capa}<div class="sint-info">'
         '<div class="sint-olho">Você analisou</div>'
         f'<div class="sint-titulo">{e(m["titulo"])}</div>'
         f'<div class="sint-artista">{e(m.get("artista") or "")}{tags_semente()}</div>'
-        f'<div class="sint-busca">Buscando por: {e(busca_txt)} · Gêneros: {e(gen_txt)}</div>'
+        f'<div class="sint-busca">Buscando por: {e(busca_txt)} · {e(gen_txt)}</div>'
         '</div></div>', unsafe_allow_html=True)
 
     contagem = rec.contagem_idiomas(b["fontes"])
@@ -466,8 +480,10 @@ if b:
         st.caption("O idioma das músicas deste catálogo ainda não foi identificado. "
                    "Rode o passo de idiomas no notebook 01 para ativar esse filtro.")
 
+    so_g = b.get("generos") if modo_b == "so" else None
+    pref_g = b.get("generos") if modo_b == "preferir" else None
     recs, avisos = rec.recomendar(an["feats"], b["pesos"], n=10, fontes=b["fontes"], excluir=m,
-                                  idiomas=idiomas, generos=b.get("generos"))
+                                  idiomas=idiomas, generos=so_g, preferir_generos=pref_g)
     for aviso in avisos:
         st.warning(aviso)
     if not idiomas:

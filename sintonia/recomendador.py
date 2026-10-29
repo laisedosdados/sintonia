@@ -153,7 +153,15 @@ class Recomendador:
     def recomendar(self, feats: dict[str, dict[str, float]], pesos: dict[str, float], n: int = 10,
                    fontes: list[str] | None = None, excluir: dict | None = None,
                    idiomas: list[str] | None = None,
-                   generos: list[str] | None = None) -> tuple[pd.DataFrame, list[str]]:
+                   generos: list[str] | None = None,
+                   preferir_generos: list[str] | None = None,
+                   bonus_genero: float = 0.08) -> tuple[pd.DataFrame, list[str]]:
+        """Recomendações em ordem de compatibilidade.
+
+        - generos: só músicas desses gêneros (filtro).
+        - preferir_generos: músicas desses gêneros sobem na lista (ganham `bonus_genero`
+          na ordenação), mas as outras continuam aparecendo. A % mostrada não muda.
+        """
         res, avisos, z, usados = self.pontuar(feats, pesos)
         if res.empty:
             return res, avisos
@@ -167,7 +175,11 @@ class Recomendador:
         if excluir:
             chave = _normaliza_texto(excluir.get("titulo")) + "|" + _normaliza_texto(excluir.get("artista"))
             res = res[(res.index != excluir.get("id")) & (self._chave.loc[res.index] != chave)]
-        res = res.dropna(subset=["parecida"]).sort_values("parecida", ascending=False)
+        res = res.dropna(subset=["parecida"])
+        ordem = res["parecida"].copy()
+        if preferir_generos:
+            ordem = ordem + bonus_genero * res["genero"].isin(preferir_generos)
+        res = res.loc[ordem.sort_values(ascending=False).index]
 
         # no máximo 2 músicas do mesmo artista, para variar as sugestões
         res = res[res.groupby(res["artista"].map(_normaliza_texto)).cumcount() < 2].head(n)

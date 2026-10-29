@@ -189,3 +189,21 @@ def test_generos_no_recomendador(catalogo):
     assert len(res) > 0 and set(res["genero"]) == {"Rock"}
     res, _ = rec.recomendar(feats, {"melodia": 1.0}, n=10)
     assert SEM_GENERO in set(res["genero"]) or len(res) <= 6
+
+
+def test_preferir_generos_sem_excluir(catalogo):
+    rec = Recomendador.do_banco(catalogo)
+    if "Rock" not in set(rec.musicas["genero"]):  # caso o teste anterior não tenha rodado antes
+        con = banco.conectar(catalogo)
+        for (mid,) in con.execute("SELECT id FROM musicas").fetchall():
+            if "saltos" in mid:
+                banco.salvar_genero(con, mid, "Rock", "Rock")
+        con.close()
+        rec = Recomendador.do_banco(catalogo)
+    feats, _ = extrair(musica(melodia=MELODIA_PASSOS, transpor=2, bpm=115))
+    normal, _ = rec.recomendar(feats, {"melodia": 1.0}, n=12)
+    pref, _ = rec.recomendar(feats, {"melodia": 1.0}, n=12, preferir_generos=["Rock"], bonus_genero=1.0)
+    assert set(pref.index) == set(normal.index)                 # ninguém é excluído
+    n_rock = int((pref["genero"] == "Rock").sum())
+    assert n_rock > 0 and (pref["genero"].iloc[:n_rock] == "Rock").all()   # mas o Rock sobe
+    assert pref.loc[normal.index[0], "parecida"] == normal.iloc[0]["parecida"]  # a % não muda
