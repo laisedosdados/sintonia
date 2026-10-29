@@ -1,0 +1,5 @@
+# Para rodar os testes e o notebook de exploração
+-r requirements.txt
+pytest
+plotly
+umap-learn

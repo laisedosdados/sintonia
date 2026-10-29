@@ -1,0 +1,16 @@
+# Dependências do app e do catálogo
+# A linha abaixo faz o pip baixar o PyTorch sem placa de vídeo (bem menor),
+# o que é o certo para o Streamlit Community Cloud. No Colab ela é ignorada.
+--extra-index-url https://download.pytorch.org/whl/cpu
+streamlit>=1.40
+librosa>=0.10
+numpy
+pandas
+scikit-learn
+soundfile
+requests
+altair
+tqdm
+torch
+torchaudio
+demucs>=4.0
