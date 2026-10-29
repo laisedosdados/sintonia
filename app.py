@@ -8,6 +8,7 @@ import html
 import io
 import os
 import tempfile
+from pathlib import Path
 
 import altair as alt
 import numpy as np
@@ -44,8 +45,17 @@ ss = st.session_state
 
 
 # ================================================================ recursos
-@st.cache_resource(show_spinner=False)
-def carregar_catalogo() -> Recomendador | None:
+def versao_catalogo() -> tuple:
+    """Muda quando o catálogo ou o código do projeto mudam (ex.: depois de subir
+    algo novo no GitHub). Assim o app recarrega em vez de usar a versão antiga
+    que ficou guardada na memória."""
+    import sintonia
+    arquivos = [banco.CATALOGO_PADRAO, *sorted(Path(sintonia.__file__).parent.glob("*.py"))]
+    return tuple(os.path.getmtime(a) if os.path.exists(a) else 0.0 for a in arquivos)
+
+
+@st.cache_resource(show_spinner=False, max_entries=1)
+def carregar_catalogo(versao: tuple) -> Recomendador | None:
     if not banco.CATALOGO_PADRAO.exists():
         return None
     rec = Recomendador.do_banco(banco.CATALOGO_PADRAO)
@@ -137,7 +147,7 @@ def analisar(musica: dict, caminho_local: str | None, rec: Recomendador | None):
 
 
 # ================================================================ tela
-rec = carregar_catalogo()
+rec = carregar_catalogo(versao_catalogo())
 
 st.markdown(
     '<div class="sint-marca"><div class="sint-disco"></div><div><h1>Sintonia</h1>'
