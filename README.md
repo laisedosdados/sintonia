@@ -27,7 +27,8 @@ Foi meu primeiro projeto de dados com áudio, e usar uma IA como parceira me per
 2. O app **separa a música com IA** e toca cada parte isolada: só a voz, só os instrumentos, só a batida.
 3. A pessoa marca a parte que tem "aquilo". O app ajusta a busca, e ela ainda pode refinar o quanto cada aspecto importa.
 4. O app compara com o catálogo e mostra as músicas mais parecidas, com a **% de compatibilidade** e uma explicação em português simples, como *"As duas têm melodia com saltos grandes entre as notas; voz com bastante vibrato"*.
-5. Dá para **filtrar por idioma** (português, inglês, espanhol, japonês, coreano e outros) e abrir cada música no YouTube, YouTube Music, Spotify, Deezer ou Jamendo.
+5. O app mostra as **informações da música** (gênero, álbum, ano, tom, andamento) e sugere os **gêneros que mais soam parecidos** com ela. Dá para receber músicas só desses gêneros.
+6. Dá para **filtrar por idioma** (português, inglês, espanhol, japonês, coreano e outros) e abrir cada música no YouTube, YouTube Music, Spotify, Deezer ou Jamendo.
 
 ```mermaid
 flowchart LR
@@ -66,6 +67,8 @@ flowchart LR
 **Não guardar áudio de ninguém.** O áudio é baixado, analisado e apagado. O banco guarda só números e o identificador de cada música, e o app toca a prévia direto da fonte.
 
 **O YouTube só para ouvir.** Pensei em usar o YouTube para analisar as músicas, mas os termos de uso proíbem baixar o áudio. Então ele entrou só como link para ouvir a música inteira.
+
+**Gêneros parecidos medidos pelo som.** O gênero de cada música vem do Deezer e do Jamendo, mas quais gêneros são "parecidos" com a música analisada eu calculo pelo som: para cada gênero, faço a média das cinco músicas dele mais compatíveis. Assim, o resultado muda conforme o que a pessoa escolheu valorizar (melodia, voz, ritmo...). Quando a música não tem gênero informado, o app estima pelo gênero das músicas mais parecidas.
 
 **Idioma detectado pela voz.** Para o filtro de idioma, uso o Whisper ouvindo só a voz separada, sem os instrumentos, o que deixa a detecção mais confiável. Quando ele não tem certeza, a música fica como "não identificado", em vez de ir para o idioma errado.
 
@@ -108,6 +111,7 @@ sintonia/
   recomendador.py              similaridade, recomendação e explicação
   descricoes.py                textos em português simples
   idioma.py                    idioma cantado (Whisper)
+  generos.py                   gênero e informações da música (Deezer, Jamendo)
   links.py                     links para YouTube, Spotify, Deezer...
   estilo.py                    visual "vinil retrô" do app
   banco.py                     SQLite
@@ -119,6 +123,7 @@ notebooks/
 sql/                           estrutura do banco e consultas de exemplo
 powerbi/                       guia do painel e CSVs exportados
 tests/                         testes com músicas sintéticas
+.github/workflows/generos.yml  preenche o gênero do catálogo automaticamente (GitHub Actions)
 dados/catalogo.db              o catálogo (só números, sem áudio)
 ```
 

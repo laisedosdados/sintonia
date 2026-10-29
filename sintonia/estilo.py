@@ -97,6 +97,32 @@ CSS = f"""
 
 /* cartões com borda do Streamlit em papel */
 div[data-testid="stVerticalBlockBorderWrapper"] {{ background: {PAPEL}; }}
+/* "Sobre essa música" */
+.sint-sobre {{
+  display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 20px; align-items: start;
+  background: {PAPEL}; border: 1px solid rgba(43,33,24,.14); border-radius: 14px; padding: 18px;
+}}
+.sint-sobre-capa {{ width: 132px; height: 132px; border-radius: 10px; object-fit: cover; display: block;
+  box-shadow: 0 2px 0 rgba(43,33,24,.12); }}
+.sint-sobre .sint-titulo {{ font-size: 1.4rem; }}
+.sint-fatos {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 20px; margin-top: 14px; }}
+.sint-fato {{ display: grid; gap: 1px; min-width: 0; }}
+.sint-fato small {{ font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: {CAFE_SUAVE}; }}
+.sint-fato b {{ font-weight: 600; color: {CAFE}; overflow-wrap: anywhere; }}
+.sint-fato i {{ font-size: 0.75rem; color: {CAFE_SUAVE}; }}
+@media (max-width: 640px) {{
+  .sint-sobre {{ display: block; }}
+  .sint-sobre-capa {{ width: 84px; height: 84px; float: left; margin-right: 14px; }}
+  .sint-fatos {{ clear: both; padding-top: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+}}
+
+/* música analisada no topo dos resultados */
+.sint-semente {{
+  display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 16px; align-items: center;
+  border: 2px solid {TERRACOTA}; border-radius: 14px; padding: 14px; background: {PAPEL}; margin: 6px 0 14px;
+}}
+.sint-olho {{ font: 700 0.72rem/1 'Work Sans', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: {TERRACOTA}; margin-bottom: 6px; }}
+.sint-busca {{ font-size: 0.82rem; color: {CAFE_SUAVE}; margin-top: 6px; }}
 </style>
 """
 

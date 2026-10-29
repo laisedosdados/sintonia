@@ -14,7 +14,7 @@ import time
 
 from tqdm.auto import tqdm
 
-from . import audio, banco, fontes, idioma
+from . import audio, banco, fontes, generos, idioma
 from .analise import analisar_faixa
 
 # termos usados para achar playlists variadas no Deezer
@@ -63,6 +63,8 @@ def construir(fonte: str, maximo: int, caminho_db: str, metodo: str = "auto",
             if detectar_idioma and info["tem_voz"]:
                 info["idioma"], info["idioma_conf"] = idioma.detectar(partes["voz"], audio.SR)
             banco.salvar_musica(con, faixa.como_dict(), feats, info, metodo_usado)
+            gens = generos.info_por_id(faixa.id).get("generos") or []
+            banco.salvar_genero(con, faixa.id, gens[0] if gens else generos.SEM_GENERO, " | ".join(gens))
             ok += 1
             barra.update(1)
             barra.set_postfix_str(faixa.nome[:40])

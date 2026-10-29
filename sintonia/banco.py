@@ -28,7 +28,7 @@ def conectar(caminho: str | Path = CATALOGO_PADRAO) -> sqlite3.Connection:
 def _migrar(con: sqlite3.Connection) -> None:
     """Adiciona colunas novas em bancos criados por versões antigas do projeto."""
     colunas = {linha[1] for linha in con.execute("PRAGMA table_info(musicas)")}
-    for nome, tipo in (("idioma", "TEXT"), ("idioma_conf", "REAL")):
+    for nome, tipo in (("idioma", "TEXT"), ("idioma_conf", "REAL"), ("genero", "TEXT"), ("generos", "TEXT")):
         if nome not in colunas:
             con.execute(f"ALTER TABLE musicas ADD COLUMN {nome} {tipo}")
     con.commit()
@@ -61,6 +61,11 @@ def salvar_musica(con: sqlite3.Connection, faixa: dict, feats: dict[str, dict[st
 
 def salvar_idioma(con: sqlite3.Connection, musica_id: str, codigo: str, confianca: float) -> None:
     con.execute("UPDATE musicas SET idioma=?, idioma_conf=? WHERE id=?", (codigo, float(confianca), musica_id))
+    con.commit()
+
+
+def salvar_genero(con: sqlite3.Connection, musica_id: str, genero: str, generos: str = "") -> None:
+    con.execute("UPDATE musicas SET genero=?, generos=? WHERE id=?", (genero, generos, musica_id))
     con.commit()
 
 

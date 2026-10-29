@@ -157,3 +157,35 @@ def test_gostou_por_musica(tmp_path):
     banco.registrar_gostou(con, bid, "deezer:2", False, {"titulo": "B", "parecida": 0.5})
     linhas = con.execute("SELECT posicao, musica_id, gostou FROM recomendacoes ORDER BY posicao").fetchall()
     assert linhas == [(1, "deezer:1", 1), (2, "deezer:2", 0)]
+
+
+# ------------------------------------------------------------ gêneros
+def test_traducao_generos():
+    from sintonia.generos import traduzir
+    assert traduzir("Alternative") == "Alternativo"
+    assert traduzir("Rap/Hip Hop") == "Rap/Hip Hop"
+    assert traduzir("electronic") == "Eletrônica"
+    assert traduzir("Sertanejo") == "Sertanejo"
+    assert traduzir("synthwave") == "Synthwave"
+    assert traduzir("") is None
+
+
+def test_generos_no_recomendador(catalogo):
+    from sintonia.generos import SEM_GENERO
+    con = banco.conectar(catalogo)
+    ids = [r[0] for r in con.execute("SELECT id FROM musicas ORDER BY id")]
+    for mid in ids:  # melodia em passinhos = "Pop", com saltos = "Rock", aleatórias sem gênero
+        g = "Pop" if "passos" in mid else ("Rock" if "saltos" in mid else None)
+        if g:
+            banco.salvar_genero(con, mid, g, g)
+    con.close()
+    rec = Recomendador.do_banco(catalogo)
+    assert set(rec.contagem_generos().index) == {"Pop", "Rock", SEM_GENERO}
+    feats, _ = extrair(musica(melodia=MELODIA_PASSOS, transpor=2, bpm=115))
+    prox = rec.generos_proximos(feats, {"melodia": 1.0})
+    assert prox.iloc[0]["genero"] == "Pop" and SEM_GENERO not in set(prox["genero"])
+    assert rec.genero_provavel(feats) in {"Pop", "Rock"}
+    res, _ = rec.recomendar(feats, {"melodia": 1.0}, n=10, generos=["Rock"])
+    assert len(res) > 0 and set(res["genero"]) == {"Rock"}
+    res, _ = rec.recomendar(feats, {"melodia": 1.0}, n=10)
+    assert SEM_GENERO in set(res["genero"]) or len(res) <= 6

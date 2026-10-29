@@ -1,0 +1,37 @@
+# Preenche o gênero musical das músicas do catálogo (dados/catalogo.db),
+# buscando no Deezer e no Jamendo, e salva o catálogo atualizado no repositório.
+# Roda sozinho quando este arquivo ou o script mudam, ou pelo botão "Run workflow"
+# na aba Actions do GitHub.
+name: Gêneros do catálogo
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "sintonia/generos.py"
+      - ".github/workflows/generos.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  generos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar dependências
+        run: pip install requests pandas numpy
+      - name: Buscar gêneros
+        env:
+          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+        run: python -m sintonia.generos --db dados/catalogo.db
+      - name: Salvar o catálogo atualizado
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dados/catalogo.db
+          git diff --cached --quiet || (git commit -m "Gêneros do catálogo (automático)" && git push)

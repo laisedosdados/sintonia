@@ -23,6 +23,7 @@ import pandas as pd
 from . import banco
 from .caracteristicas import ASPECTOS
 from .descricoes import ASPECTO_INFO, TEXTOS, aspecto_de, frase
+from .generos import SEM_GENERO
 from .idioma import grupo as grupo_idioma
 
 # grupos de características que formam um "vetor" (ex.: os 25 intervalos da melodia).
@@ -49,9 +50,10 @@ class Recomendador:
     def __init__(self, musicas: pd.DataFrame, X: pd.DataFrame):
         ids = musicas.index.intersection(X.index)
         self.musicas = musicas.loc[ids].copy()
-        for col in ("idioma", "idioma_conf", "tem_voz"):
+        for col in ("idioma", "idioma_conf", "tem_voz", "genero", "generos"):
             if col not in self.musicas:
                 self.musicas[col] = None
+        self.musicas["genero"] = self.musicas["genero"].fillna(SEM_GENERO).replace("", SEM_GENERO)
         self.musicas["grupo_idioma"] = [
             grupo_idioma(c, f, v) for c, f, v in
             zip(self.musicas["idioma"], self.musicas["idioma_conf"], self.musicas["tem_voz"])]
@@ -85,6 +87,9 @@ class Recomendador:
         m = self.musicas if not fontes else self.musicas[self.musicas["fonte"].isin(fontes)]
         return m["grupo_idioma"].value_counts()
 
+    def contagem_generos(self) -> pd.Series:
+        return self.musicas["genero"].value_counts()
+
     @property
     def separadores(self) -> list[str]:
         return sorted(self.musicas["separador"].dropna().unique().tolist())
@@ -112,9 +117,11 @@ class Recomendador:
         nota[faltando > 0.5] = np.nan  # ex.: música sem voz não tem melodia para comparar
         return nota
 
-    def recomendar(self, feats: dict[str, dict[str, float]], pesos: dict[str, float], n: int = 10,
-                   fontes: list[str] | None = None, excluir: dict | None = None,
-                   idiomas: list[str] | None = None) -> tuple[pd.DataFrame, list[str]]:
+    def pontuar(self, feats: dict[str, dict[str, float]], pesos: dict[str, float]):
+        """Compatibilidade de TODAS as músicas do catálogo, sem filtros.
+
+        Devolve (tabela com "parecida" e "parecida_<aspecto>", avisos, z, pesos usados).
+        """
         avisos: list[str] = []
         z = self.padronizar(feats)
         usados = {a: float(w) for a, w in pesos.items() if w and w > 0}
@@ -132,7 +139,7 @@ class Recomendador:
             else:
                 notas[a] = s
         if not usados:
-            return self.musicas.iloc[:0].assign(parecida=[]), avisos
+            return self.musicas.iloc[:0].assign(parecida=[]), avisos, z, usados
 
         tabela = pd.DataFrame(notas)
         soma_pesos = sum(usados.values())
@@ -141,11 +148,22 @@ class Recomendador:
         res["parecida"] = final
         for a in ASPECTOS:
             res[f"parecida_{a}"] = tabela[a] if a in tabela else np.nan
+        return res, avisos, z, usados
+
+    def recomendar(self, feats: dict[str, dict[str, float]], pesos: dict[str, float], n: int = 10,
+                   fontes: list[str] | None = None, excluir: dict | None = None,
+                   idiomas: list[str] | None = None,
+                   generos: list[str] | None = None) -> tuple[pd.DataFrame, list[str]]:
+        res, avisos, z, usados = self.pontuar(feats, pesos)
+        if res.empty:
+            return res, avisos
 
         if fontes:
             res = res[res["fonte"].isin(fontes)]
         if idiomas is not None:
             res = res[res["grupo_idioma"].isin(idiomas)]
+        if generos is not None:
+            res = res[res["genero"].isin(generos)]
         if excluir:
             chave = _normaliza_texto(excluir.get("titulo")) + "|" + _normaliza_texto(excluir.get("artista"))
             res = res[(res.index != excluir.get("id")) & (self._chave.loc[res.index] != chave)]
@@ -155,6 +173,36 @@ class Recomendador:
         res = res[res.groupby(res["artista"].map(_normaliza_texto)).cumcount() < 2].head(n)
         res["explicacao"] = [self.explicar(z, self.Z.loc[i], usados) for i in res.index]
         return res, avisos
+
+    # ------------------------------------------------------------ gêneros
+    def generos_proximos(self, feats: dict[str, dict[str, float]], pesos: dict[str, float],
+                         excluir: dict | None = None, top: int = 5) -> pd.DataFrame:
+        """Gêneros do catálogo ordenados pelo quanto soam parecidos com a música.
+
+        A nota de cada gênero é a média das suas `top` músicas mais compatíveis,
+        para um gênero com muitas músicas não ganhar só pela quantidade.
+        """
+        res, _, _, _ = self.pontuar(feats, pesos)
+        if res.empty:
+            return pd.DataFrame(columns=["genero", "parecida", "musicas"])
+        if excluir:
+            res = res[res.index != excluir.get("id")]
+        res = res.dropna(subset=["parecida"])
+        res = res[res["genero"] != SEM_GENERO]
+        linhas = []
+        for g, grupo in res.groupby("genero"):
+            linhas.append({"genero": g, "parecida": float(grupo["parecida"].nlargest(top).mean()),
+                           "musicas": int(len(grupo))})
+        return pd.DataFrame(linhas).sort_values("parecida", ascending=False).reset_index(drop=True)
+
+    def genero_provavel(self, feats: dict[str, dict[str, float]], vizinhas: int = 15) -> str | None:
+        """Estima o gênero pelo som: voto das músicas mais parecidas em todos os aspectos."""
+        res, _, _, _ = self.pontuar(feats, {a: 1.0 for a in ASPECTOS})
+        res = res.dropna(subset=["parecida"])
+        res = res[res["genero"] != SEM_GENERO].nlargest(vizinhas, "parecida")
+        if res.empty:
+            return None
+        return str(res.groupby("genero")["parecida"].sum().idxmax())
 
     # ------------------------------------------------------------ explicações
     def explicar(self, z_semente: pd.Series, z_outra: pd.Series, pesos: dict[str, float], maximo: int = 3) -> str:

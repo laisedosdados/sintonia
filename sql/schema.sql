@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS musicas (
     separador           TEXT,                  -- demucs | leve
     analisado_em        TEXT,
     idioma              TEXT,                  -- código do Whisper: pt, en, es, ja, ko... (NULL = não detectado)
-    idioma_conf         REAL                   -- confiança da detecção, de 0 a 1
+    idioma_conf         REAL,                  -- confiança da detecção, de 0 a 1
+    genero              TEXT,                  -- gênero principal (do Deezer/Jamendo), em português
+    generos             TEXT                   -- todos os gêneros do álbum, separados por " | "
 );
 
 -- Formato "longo": uma linha por (música, característica).
