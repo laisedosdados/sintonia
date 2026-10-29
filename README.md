@@ -1,12 +1,12 @@
 # 🎧 Sintonia
 
-**Descubra o que te pega numa música e encontre outras com a mesma coisa.**
+**Descubra o que te cativa numa música e encontre outras com a mesma coisa.**
 
 👉 **[Abrir o app](https://sintonia-laise.streamlit.app/)**
 
 ## Por que eu fiz este projeto
 
-Sempre soube que algumas músicas tinham *alguma coisa* que me pegava, mas nunca soube dizer o quê. Era a melodia? A voz? A batida? Os aplicativos de música recomendam por gênero ou pelo que outras pessoas ouviram, e isso não resolvia: eu queria músicas que tivessem **aquela mesma coisa**, mesmo sem saber nomeá-la.
+Sempre soube que algumas músicas tinham *alguma coisa* que me cativava, mas nunca soube dizer o quê. Era a melodia? A voz? A batida? Os aplicativos de música recomendam por gênero ou pelo que outras pessoas ouviram, e isso não resolvia: eu queria músicas que tivessem **aquela mesma coisa**, mesmo sem saber nomeá-la.
 
 Quando comecei a pensar no problema, percebi que, no meu caso, o que me atrai é principalmente a **melodia** e, em segundo lugar, a **voz**. E percebi também que muita gente passa pelo mesmo: sente, mas não tem vocabulário musical para explicar.
 

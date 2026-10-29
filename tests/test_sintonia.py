@@ -93,3 +93,67 @@ def test_exportar(catalogo, tmp_path):
     gerados = exportar(catalogo, tmp_path / "nao_existe.db", tmp_path)
     nomes = {g.name for g in gerados}
     assert {"musicas.csv", "caracteristicas.csv", "mapa.csv"} <= nomes
+
+
+# ------------------------------------------------------------ idioma, links e banco antigo
+def test_grupo_idioma():
+    from sintonia.idioma import grupo
+    assert grupo("en", 0.9, 1) == "Inglês"
+    assert grupo("ko", 0.8, 1) == "Coreano"
+    assert grupo("fr", 0.9, 1) == "Outros idiomas"
+    assert grupo("en", 0.2, 1) == "Não identificado"
+    assert grupo(None, None, 1) == "Não identificado"
+    assert grupo(float("nan"), float("nan"), 1) == "Não identificado"
+    assert grupo("en", 0.9, 0) == "Instrumental"
+
+
+def test_filtro_por_idioma(catalogo):
+    con = banco.conectar(catalogo)
+    ids = [r[0] for r in con.execute("SELECT id FROM musicas ORDER BY id")]
+    for i, mid in enumerate(ids):
+        banco.salvar_idioma(con, mid, ["en", "ja", "pt"][i % 3], 0.95)
+    con.close()
+    rec = Recomendador.do_banco(catalogo)
+    feats, _ = extrair(musica(melodia=MELODIA_PASSOS, transpor=2, bpm=115))
+    res, _ = rec.recomendar(feats, {"melodia": 1.0}, n=10, idiomas=["Japonês"])
+    assert len(res) > 0 and set(res["grupo_idioma"]) == {"Japonês"}
+    res, _ = rec.recomendar(feats, {"melodia": 1.0}, n=10, idiomas=[])
+    assert res.empty
+    assert rec.contagem_idiomas().sum() == len(ids)
+
+
+def test_links():
+    from sintonia.links import plataformas
+    deezer = dict(plataformas("deezer", "Blinding Lights", "The Weeknd", "https://www.deezer.com/track/1"))
+    assert set(deezer) == {"YouTube", "YouTube Music", "Spotify", "Deezer"}
+    assert deezer["Deezer"] == "https://www.deezer.com/track/1"
+    assert "Blinding+Lights+The+Weeknd" in deezer["YouTube"]
+    jam = dict(plataformas("jamendo", "Canção", "Artista", "https://www.jamendo.com/track/9"))
+    assert jam["Jamendo"] == "https://www.jamendo.com/track/9" and "deezer.com/search" in jam["Deezer"]
+
+
+def test_banco_antigo_ganha_coluna_idioma(tmp_path):
+    import sqlite3
+    caminho = tmp_path / "antigo.db"
+    velho = sqlite3.connect(caminho)
+    velho.execute("CREATE TABLE musicas (id TEXT PRIMARY KEY, fonte TEXT, id_externo TEXT, titulo TEXT, "
+                  "artista TEXT, album TEXT, capa_url TEXT, link TEXT, duracao REAL, segundos_analisados REAL, "
+                  "tem_voz INTEGER, n_notas INTEGER, tom TEXT, separador TEXT, analisado_em TEXT)")
+    velho.execute("INSERT INTO musicas (id, titulo, tem_voz) VALUES ('deezer:1', 'x', 1)")
+    velho.commit(); velho.close()
+    con = banco.conectar(caminho)
+    banco.salvar_idioma(con, "deezer:1", "es", 0.88)
+    assert con.execute("SELECT idioma, idioma_conf FROM musicas").fetchone() == ("es", 0.88)
+
+
+def test_gostou_por_musica(tmp_path):
+    import pandas as pd
+    con = banco.conectar(tmp_path / "uso.db")
+    bid = banco.registrar_busca(con, {"id": "s", "titulo": "t", "artista": "a"}, ["voz"], {"melodia": 1}, ["deezer"])
+    recs = pd.DataFrame({"titulo": ["A"], "artista": ["x"], "fonte": ["deezer"], "parecida": [0.8],
+                         "explicacao": ["e"]}, index=["deezer:1"])
+    banco.registrar_recomendacoes(con, bid, recs)
+    banco.registrar_gostou(con, bid, "deezer:1", True)
+    banco.registrar_gostou(con, bid, "deezer:2", False, {"titulo": "B", "parecida": 0.5})
+    linhas = con.execute("SELECT posicao, musica_id, gostou FROM recomendacoes ORDER BY posicao").fetchall()
+    assert linhas == [(1, "deezer:1", 1), (2, "deezer:2", 0)]

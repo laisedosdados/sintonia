@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS musicas (
     n_notas             INTEGER,
     tom                 TEXT,                  -- ex.: "Lá menor" (estimado)
     separador           TEXT,                  -- demucs | leve
-    analisado_em        TEXT
+    analisado_em        TEXT,
+    idioma              TEXT,                  -- código do Whisper: pt, en, es, ja, ko... (NULL = não detectado)
+    idioma_conf         REAL                   -- confiança da detecção, de 0 a 1
 );
 
 -- Formato "longo": uma linha por (música, característica).

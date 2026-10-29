@@ -23,6 +23,7 @@ import pandas as pd
 from . import banco
 from .caracteristicas import ASPECTOS
 from .descricoes import ASPECTO_INFO, TEXTOS, aspecto_de, frase
+from .idioma import grupo as grupo_idioma
 
 # grupos de características que formam um "vetor" (ex.: os 25 intervalos da melodia).
 # Cada grupo pesa o mesmo dentro do aspecto, para um vetor grande não abafar o resto.
@@ -48,6 +49,12 @@ class Recomendador:
     def __init__(self, musicas: pd.DataFrame, X: pd.DataFrame):
         ids = musicas.index.intersection(X.index)
         self.musicas = musicas.loc[ids].copy()
+        for col in ("idioma", "idioma_conf", "tem_voz"):
+            if col not in self.musicas:
+                self.musicas[col] = None
+        self.musicas["grupo_idioma"] = [
+            grupo_idioma(c, f, v) for c, f, v in
+            zip(self.musicas["idioma"], self.musicas["idioma_conf"], self.musicas["tem_voz"])]
         self.X = X.loc[ids]
         self.media = self.X.mean()
         self.desvio = self.X.std().replace(0, 1).fillna(1)
@@ -73,6 +80,10 @@ class Recomendador:
     @property
     def fontes(self) -> list[str]:
         return sorted(self.musicas["fonte"].dropna().unique().tolist())
+
+    def contagem_idiomas(self, fontes: list[str] | None = None) -> pd.Series:
+        m = self.musicas if not fontes else self.musicas[self.musicas["fonte"].isin(fontes)]
+        return m["grupo_idioma"].value_counts()
 
     @property
     def separadores(self) -> list[str]:
@@ -102,7 +113,8 @@ class Recomendador:
         return nota
 
     def recomendar(self, feats: dict[str, dict[str, float]], pesos: dict[str, float], n: int = 10,
-                   fontes: list[str] | None = None, excluir: dict | None = None) -> tuple[pd.DataFrame, list[str]]:
+                   fontes: list[str] | None = None, excluir: dict | None = None,
+                   idiomas: list[str] | None = None) -> tuple[pd.DataFrame, list[str]]:
         avisos: list[str] = []
         z = self.padronizar(feats)
         usados = {a: float(w) for a, w in pesos.items() if w and w > 0}
@@ -132,6 +144,8 @@ class Recomendador:
 
         if fontes:
             res = res[res["fonte"].isin(fontes)]
+        if idiomas is not None:
+            res = res[res["grupo_idioma"].isin(idiomas)]
         if excluir:
             chave = _normaliza_texto(excluir.get("titulo")) + "|" + _normaliza_texto(excluir.get("artista"))
             res = res[(res.index != excluir.get("id")) & (self._chave.loc[res.index] != chave)]

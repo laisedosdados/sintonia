@@ -4,6 +4,7 @@ Rodar no computador:   streamlit run app.py
 """
 from __future__ import annotations
 
+import html
 import io
 import os
 import tempfile
@@ -14,7 +15,9 @@ import pandas as pd
 import soundfile as sf
 import streamlit as st
 
-from sintonia import audio, banco, fontes
+from sintonia import audio, banco, estilo, fontes
+from sintonia.idioma import GRUPOS as GRUPOS_IDIOMA
+from sintonia.links import plataformas
 from sintonia.analise import analisar_arquivo
 from sintonia.audio import SR
 from sintonia.caracteristicas import ASPECTOS
@@ -22,6 +25,7 @@ from sintonia.descricoes import ASPECTO_INFO
 from sintonia.recomendador import Recomendador
 
 st.set_page_config(page_title="Sintonia", page_icon="🎧", layout="centered")
+st.markdown(estilo.CSS, unsafe_allow_html=True)
 
 # chave do Jamendo: pode vir dos "secrets" do Streamlit ou de variável de ambiente
 try:
@@ -126,7 +130,7 @@ def analisar(musica: dict, caminho_local: str | None, rec: Recomendador | None):
         status.update(label="Análise pronta!", state="complete", expanded=False)
     ss.analise = {"musica": musica, "feats": feats, "info": info, "metodo": metodo_usado,
                   "trechos": trechos_para_ouvir(partes), "aviso": aviso}
-    ss.pop("recs", None)
+    ss.pop("pesquisa", None)
     for p, _ in PARTES_TESTE:
         ss[f"parte_{p}"] = False
     aplicar_sugestao()
@@ -135,9 +139,17 @@ def analisar(musica: dict, caminho_local: str | None, rec: Recomendador | None):
 # ================================================================ tela
 rec = carregar_catalogo()
 
-st.title("🎧 Sintonia")
+st.markdown(
+    '<div class="sint-marca"><div class="sint-disco"></div><div><h1>Sintonia</h1>'
+    '<p class="sint-sub">Descubra o que te pega numa música e encontre outras com a mesma coisa.</p>'
+    '</div></div>', unsafe_allow_html=True)
 st.write("Sabe quando uma música tem *alguma coisa* que te pega, mas você não sabe explicar o quê? "
-         "Aqui você descobre ouvindo, e depois encontra outras músicas com essa mesma coisa.")
+         "Aqui você descobre ouvindo.")
+
+
+def passo(numero: int, titulo: str) -> None:
+    st.markdown(f'<div class="sint-passo">Passo {numero}</div>', unsafe_allow_html=True)
+    st.header(titulo)
 
 if rec is None:
     st.warning("O catálogo ainda está vazio. Monte-o com o notebook `notebooks/01_montar_catalogo.ipynb` "
@@ -155,7 +167,7 @@ with st.sidebar:
     st.caption("Nenhum áudio é guardado: o app analisa e apaga.")
 
 # ---------------------------------------------------------------- 1. escolher
-st.header("1. Escolha uma música")
+passo(1, "Qual música tem aquilo?")
 fonte = st.radio("Onde procurar?", list(fontes.FONTES), format_func=NOME_FONTE.get, horizontal=True)
 with st.form("busca", border=False):
     termo = st.text_input("Nome da música", placeholder="ex.: Evidências Chitãozinho e Xororó")
@@ -201,7 +213,7 @@ if not an:
 # ---------------------------------------------------------------- 2. teste de escuta
 m = an["musica"]
 st.divider()
-st.header("2. Teste de escuta")
+passo(2, "Ouça cada parte separada")
 st.write(f"**{m['titulo']}**" + (f" — {m['artista']}" if m.get("artista") else "")
          + f"  ·  tom estimado: {an['info'].get('tom', '?')}")
 if an.get("aviso"):
@@ -238,14 +250,22 @@ if rec is not None:
 
 # ---------------------------------------------------------------- 3. o que buscar
 st.divider()
-st.header("3. O que você quer encontrar?")
-st.write("Já ajustei conforme o teste de escuta, mas pode mexer à vontade. "
-         "Quanto mais alto, mais aquilo pesa na busca.")
+passo(3, "O que você quer encontrar?")
+st.write("Cada controle diz **o quanto aquele aspecto importa** na busca. "
+         "Já ajustei conforme o teste de escuta, mas pode mexer à vontade.")
 for a in ASPECTOS:
     info = ASPECTO_INFO[a]
-    ss.setdefault(f"peso_{a}", 30)
-    st.slider(f"{info['emoji']} {info['nome']}", 0, 100, key=f"peso_{a}", help=info["explica"])
-    st.caption(info["explica"])
+    chave = f"peso_{a}"
+    ss.setdefault(chave, 30)
+    texto_nivel, classe = estilo.nivel(int(ss[chave]))
+    with st.container(border=True):
+        st.markdown(
+            f'<div class="sint-aj-cab"><span class="sint-aj-nome">{info["emoji"]} {info["nome"]}</span>'
+            f'<span class="sint-nivel n{classe}">{texto_nivel}</span></div>'
+            f'<div class="sint-aj-desc">{info["explica"]}</div>', unsafe_allow_html=True)
+        st.slider(f"Importância de {info['nome'].lower()}", 0, 100, key=chave, label_visibility="collapsed")
+        st.markdown('<div class="sint-escala"><span>0 · não importa</span><span>100 · essencial</span></div>',
+                    unsafe_allow_html=True)
 
 if rec is None:
     st.stop()
@@ -261,54 +281,80 @@ if st.button("🎧 Encontrar músicas parecidas", type="primary", width="stretch
     elif not fontes_rec:
         st.error("Escolha pelo menos uma fonte.")
     else:
-        recs, avisos = rec.recomendar(an["feats"], pesos, n=10, fontes=fontes_rec, excluir=m)
         busca_id = None
         try:
+            recs, _ = rec.recomendar(an["feats"], pesos, n=10, fontes=fontes_rec, excluir=m)
             con = conexao_uso()
             partes = [p for p, _ in PARTES_TESTE if ss.get(f"parte_{p}")]
             busca_id = banco.registrar_busca(con, m, partes, pesos, fontes_rec)
             banco.registrar_recomendacoes(con, busca_id, recs)
         except Exception:
             pass  # registrar o uso é opcional
-        ss.recs = {"tabela": recs, "avisos": avisos, "busca_id": busca_id, "pesos": pesos}
+        ss.pesquisa = {"pesos": pesos, "fontes": fontes_rec, "busca_id": busca_id}
+        ss.pop("filtro_idioma", None)
+
+
+def cartao(pos: int, linha: pd.Series, usados: list[str]) -> str:
+    e = html.escape
+    capa = (f'<img class="sint-capa" src="{e(linha["capa_url"])}" alt="">' if linha.get("capa_url")
+            else '<div class="sint-capa sint-capa-vazia"></div>')
+    barras = "".join(
+        f'<span class="sint-barra">{ASPECTO_INFO[a]["nome"]}<span class="sint-trilho">'
+        f'<i style="width:{float(linha[f"parecida_{a}"]) * 100:.0f}%"></i></span>'
+        f'{float(linha[f"parecida_{a}"]) * 100:.0f}%</span>'
+        for a in usados if pd.notna(linha.get(f"parecida_{a}")))
+    links = "".join(f'<a href="{e(url)}" target="_blank" rel="noopener">{nome}</a>'
+                    for nome, url in plataformas(linha["fonte"], linha["titulo"], linha["artista"],
+                                                 linha.get("link") or ""))
+    pct = round(float(linha["parecida"]) * 100)
+    return (f'<div class="sint-res">{capa}<div class="sint-info">'
+            f'<div class="sint-titulo">{pos}. {e(str(linha["titulo"]))}</div>'
+            f'<div class="sint-artista">{e(str(linha["artista"]))}'
+            f'<span class="sint-tag">{e(str(linha["grupo_idioma"]))}</span></div>'
+            f'<p class="sint-expl">{e(str(linha["explicacao"]))}.</p>'
+            f'<div class="sint-barras">{barras}</div><div class="sint-links">{links}</div></div>'
+            f'<div class="sint-anel" style="--p:{pct}" role="img" aria-label="{pct}% de compatibilidade">'
+            f'<span><b>{pct}%</b><small>compatível</small></span></div></div>')
+
 
 # ---------------------------------------------------------------- 4. resultado
-r = ss.get("recs")
-if r:
+b = ss.get("pesquisa")
+if b:
     st.divider()
-    st.header("4. Músicas com aquilo que te pega")
-    for aviso in r["avisos"]:
+    passo(4, "Músicas com aquilo que te pega")
+
+    contagem = rec.contagem_idiomas(b["fontes"])
+    opcoes = [g for g in GRUPOS_IDIOMA if g in contagem.index]
+    idiomas = st.multiselect(
+        "Idioma das músicas", opcoes, default=opcoes, key="filtro_idioma",
+        format_func=lambda g: f"{g} ({contagem[g]})",
+        help="Tire os idiomas que você não quer nas recomendações.")
+    if opcoes == ["Não identificado"] or set(opcoes) <= {"Não identificado", "Instrumental"}:
+        st.caption("O idioma das músicas deste catálogo ainda não foi identificado. "
+                   "Rode o passo de idiomas no notebook 01 para ativar esse filtro.")
+
+    recs, avisos = rec.recomendar(an["feats"], b["pesos"], n=10, fontes=b["fontes"], excluir=m, idiomas=idiomas)
+    for aviso in avisos:
         st.warning(aviso)
-    if r["tabela"].empty:
+    if not idiomas:
+        st.info("Escolha pelo menos um idioma para ver as recomendações.")
+    elif recs.empty:
         st.info("Não encontrei músicas para comparar com esses ajustes.")
-    usados = [a for a, w in r["pesos"].items() if w > 0]
-    for pos, (mid, linha) in enumerate(r["tabela"].iterrows(), start=1):
+
+    usados = [a for a, w in b["pesos"].items() if w > 0]
+    for pos, (mid, linha) in enumerate(recs.iterrows(), start=1):
         with st.container(border=True):
-            topo = st.columns([1, 3])
-            if linha.get("capa_url"):
-                topo[0].image(linha["capa_url"], width="stretch")
-            topo[1].markdown(f"**{pos}. {linha['titulo']}**  \n{linha['artista']}")
-            compat = float(linha["parecida"])
-            topo[1].markdown(f"### 🎯 {compat * 100:.0f}% de compatibilidade")
-            topo[1].progress(min(max(compat, 0.0), 1.0))
-            st.write(linha["explicacao"] + ".")
-            # compatibilidade em cada aspecto que a pessoa escolheu
-            for a in usados:
-                valor = linha.get(f"parecida_{a}")
-                if pd.notna(valor):
-                    info = ASPECTO_INFO[a]
-                    st.progress(min(max(float(valor), 0.0), 1.0),
-                                text=f"{info['emoji']} {info['nome']}: {float(valor) * 100:.0f}%")
+            st.markdown(cartao(pos, linha, usados), unsafe_allow_html=True)
             url = audio_atual(mid)
             if url:
                 st.audio(url)
-            if linha.get("link"):
-                st.markdown(f"[Abrir no {linha['fonte'].capitalize()}]({linha['link']})")
-            if r["busca_id"]:
+            if b["busca_id"]:
                 b1, b2 = st.columns(2)
-                if b1.button("👍 Tem aquilo", key=f"sim_{r['busca_id']}_{pos}", width="stretch"):
-                    banco.registrar_gostou(conexao_uso(), r["busca_id"], pos, True)
+                dados = {"titulo": linha["titulo"], "artista": linha["artista"], "fonte": linha["fonte"],
+                         "parecida": float(linha["parecida"]), "explicacao": linha["explicacao"]}
+                if b1.button("👍 Tem aquilo", key=f"sim_{b['busca_id']}_{mid}", width="stretch"):
+                    banco.registrar_gostou(conexao_uso(), b["busca_id"], mid, True, dados)
                     st.toast("Valeu! Isso ajuda a melhorar as recomendações.")
-                if b2.button("👎 Não tem", key=f"nao_{r['busca_id']}_{pos}", width="stretch"):
-                    banco.registrar_gostou(conexao_uso(), r["busca_id"], pos, False)
+                if b2.button("👎 Não tem", key=f"nao_{b['busca_id']}_{mid}", width="stretch"):
+                    banco.registrar_gostou(conexao_uso(), b["busca_id"], mid, False, dados)
                     st.toast("Anotado!")

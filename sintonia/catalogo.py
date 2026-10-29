@@ -14,7 +14,7 @@ import time
 
 from tqdm.auto import tqdm
 
-from . import banco, fontes
+from . import audio, banco, fontes, idioma
 from .analise import analisar_faixa
 
 # termos usados para achar playlists variadas no Deezer
@@ -48,6 +48,9 @@ def construir(fonte: str, maximo: int, caminho_db: str, metodo: str = "auto",
     faltam = max(0, maximo - ja)
     print(f"{len(candidatos)} candidatos, {ja} já no catálogo, vou analisar até {faltam}.")
 
+    detectar_idioma = idioma.whisper_disponivel()
+    if not detectar_idioma:
+        print("Whisper não instalado: o idioma das músicas não será detectado agora.")
     ok = 0
     barra = tqdm(total=faltam, desc=f"Analisando ({fonte})")
     for faixa in pendentes:
@@ -56,7 +59,9 @@ def construir(fonte: str, maximo: int, caminho_db: str, metodo: str = "auto",
         try:
             if fonte == "deezer":
                 faixa = fontes.deezer_por_id(faixa.id_externo)  # prévia nova (os links expiram)
-            feats, info, _, metodo_usado = analisar_faixa(faixa, metodo)
+            feats, info, partes, metodo_usado = analisar_faixa(faixa, metodo, manter_partes=detectar_idioma)
+            if detectar_idioma and info["tem_voz"]:
+                info["idioma"], info["idioma_conf"] = idioma.detectar(partes["voz"], audio.SR)
             banco.salvar_musica(con, faixa.como_dict(), feats, info, metodo_usado)
             ok += 1
             barra.update(1)

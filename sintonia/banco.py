@@ -21,7 +21,17 @@ def conectar(caminho: str | Path = CATALOGO_PADRAO) -> sqlite3.Connection:
     Path(caminho).parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(caminho), check_same_thread=False)
     con.executescript(SCHEMA.read_text(encoding="utf-8"))
+    _migrar(con)
     return con
+
+
+def _migrar(con: sqlite3.Connection) -> None:
+    """Adiciona colunas novas em bancos criados por versões antigas do projeto."""
+    colunas = {linha[1] for linha in con.execute("PRAGMA table_info(musicas)")}
+    for nome, tipo in (("idioma", "TEXT"), ("idioma_conf", "REAL")):
+        if nome not in colunas:
+            con.execute(f"ALTER TABLE musicas ADD COLUMN {nome} {tipo}")
+    con.commit()
 
 
 # ---------------------------------------------------------------- catálogo
@@ -34,17 +44,23 @@ def salvar_musica(con: sqlite3.Connection, faixa: dict, feats: dict[str, dict[st
                   info: dict, separador: str) -> None:
     con.execute(
         """INSERT OR REPLACE INTO musicas (id, fonte, id_externo, titulo, artista, album, capa_url,
-           link, duracao, segundos_analisados, tem_voz, n_notas, tom, separador, analisado_em)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           link, duracao, segundos_analisados, tem_voz, n_notas, tom, separador, analisado_em,
+           idioma, idioma_conf)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (faixa["id"], faixa["fonte"], faixa["id_externo"], faixa["titulo"], faixa["artista"],
          faixa.get("album", ""), faixa.get("capa_url", ""), faixa.get("link", ""),
          faixa.get("duracao", 0), info["duracao"], int(info["tem_voz"]), info["n_notas"],
-         info.get("tom", ""), separador, agora()),
+         info.get("tom", ""), separador, agora(), info.get("idioma"), info.get("idioma_conf")),
     )
     con.execute("DELETE FROM caracteristicas WHERE musica_id=?", (faixa["id"],))
     linhas = [(faixa["id"], aspecto, nome, None if valor != valor else float(valor))  # NaN -> NULL
               for aspecto, d in feats.items() for nome, valor in d.items()]
     con.executemany("INSERT INTO caracteristicas VALUES (?,?,?,?)", linhas)
+    con.commit()
+
+
+def salvar_idioma(con: sqlite3.Connection, musica_id: str, codigo: str, confianca: float) -> None:
+    con.execute("UPDATE musicas SET idioma=?, idioma_conf=? WHERE id=?", (codigo, float(confianca), musica_id))
     con.commit()
 
 
@@ -91,7 +107,18 @@ def registrar_recomendacoes(con: sqlite3.Connection, busca_id: int, recs: pd.Dat
     con.commit()
 
 
-def registrar_gostou(con: sqlite3.Connection, busca_id: int, posicao: int, gostou: bool) -> None:
-    con.execute("UPDATE recomendacoes SET gostou=? WHERE busca_id=? AND posicao=?",
-                (int(gostou), busca_id, posicao))
+def registrar_gostou(con: sqlite3.Connection, busca_id: int, musica_id: str, gostou: bool,
+                     linha: dict | None = None) -> None:
+    """Guarda o 👍/👎. Se a música não estava na lista registrada (ex.: apareceu
+    depois de filtrar por idioma), ela é acrescentada no fim."""
+    cur = con.execute("UPDATE recomendacoes SET gostou=? WHERE busca_id=? AND musica_id=?",
+                      (int(gostou), busca_id, musica_id))
+    if cur.rowcount == 0:
+        linha = linha or {}
+        pos = con.execute("SELECT COALESCE(MAX(posicao), 0) + 1 FROM recomendacoes WHERE busca_id=?",
+                          (busca_id,)).fetchone()[0]
+        con.execute("""INSERT INTO recomendacoes (busca_id, posicao, musica_id, titulo, artista, fonte,
+                       parecida, explicacao, gostou) VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (busca_id, pos, musica_id, linha.get("titulo"), linha.get("artista"), linha.get("fonte"),
+                     linha.get("parecida"), linha.get("explicacao"), int(gostou)))
     con.commit()
